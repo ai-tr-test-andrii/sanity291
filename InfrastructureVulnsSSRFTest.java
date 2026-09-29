@@ -3,6 +3,8 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 import javax.servlet.http.HttpServletRequest;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -288,5 +290,80 @@ public class InfrastructureVulnsSSRFTest {
                     "Exception for missing scheme must mention permitted schemes"
             );
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Tests for CWE-327: Weak Hash fix — MD5 replaced with SHA-256
+    // -----------------------------------------------------------------------
+
+    /**
+     * The hash() method must use SHA-256, not MD5.
+     * SHA-256 digests are 32 bytes (256 bits); MD5 digests are only 16 bytes (128 bits).
+     * Verifying the output length is the most direct runtime proof that SHA-256 is in use.
+     */
+    @Test
+    public void hash_returnsSHA256OutputLength() throws Exception {
+        byte[] digest = target.hash("test-input");
+        assertEquals(32, digest.length,
+                "SHA-256 digest must be 32 bytes (256 bits); 16 bytes would indicate MD5 is still in use");
+    }
+
+    /**
+     * Cross-check: verify the returned digest against a known-good SHA-256 value
+     * computed offline for the string "hello".
+     * Known SHA-256("hello") = 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
+     */
+    @Test
+    public void hash_knownInput_matchesSHA256() throws Exception {
+        byte[] digest = target.hash("hello");
+        // Known SHA-256 for "hello" (UTF-8)
+        byte[] expected = MessageDigest.getInstance("SHA-256")
+                .digest("hello".getBytes("UTF-8"));
+        assertArrayEquals(expected, digest,
+                "hash(\"hello\") must equal the SHA-256 digest of the same input");
+    }
+
+    /**
+     * Confirm that the output does NOT match MD5("hello"), which would be
+     * 5d41402abc4b2a76b9719d911017c592.  This test fails if MD5 is (re-)introduced.
+     */
+    @Test
+    public void hash_doesNotProduceMD5Digest() throws Exception {
+        byte[] md5Digest = MessageDigest.getInstance("MD5")
+                .digest("hello".getBytes("UTF-8"));
+        byte[] actualDigest = target.hash("hello");
+        assertFalse(
+                java.util.Arrays.equals(md5Digest, actualDigest),
+                "hash() must NOT produce an MD5 digest; replace with SHA-256 is required"
+        );
+    }
+
+    /** Empty string is a valid input and must produce a deterministic SHA-256 digest. */
+    @Test
+    public void hash_emptyString_producesKnownSHA256() throws Exception {
+        byte[] digest = target.hash("");
+        byte[] expected = MessageDigest.getInstance("SHA-256")
+                .digest("".getBytes("UTF-8"));
+        assertArrayEquals(expected, digest,
+                "SHA-256 of empty string must equal the standard SHA-256 of an empty byte array");
+    }
+
+    /** Calling hash() twice with the same input must return equal byte arrays (deterministic). */
+    @Test
+    public void hash_deterministicForSameInput() throws Exception {
+        byte[] first  = target.hash("determinism-check");
+        byte[] second = target.hash("determinism-check");
+        assertArrayEquals(first, second,
+                "hash() must be deterministic: the same input must always produce the same digest");
+    }
+
+    /** Different inputs must produce different digests (collision resistance spot-check). */
+    @Test
+    public void hash_differentInputs_produceDifferentDigests() throws Exception {
+        byte[] digestA = target.hash("inputA");
+        byte[] digestB = target.hash("inputB");
+        assertFalse(
+                java.util.Arrays.equals(digestA, digestB),
+                "Different inputs must not produce the same SHA-256 digest");
     }
 }
