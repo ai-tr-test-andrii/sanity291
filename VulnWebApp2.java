@@ -65,13 +65,16 @@ public class InfrastructureVulns {
         return builder.parse(xml);
     }
 
-    // 3. Weak Hash (Medium)
-    public byte[] md5(String input)
+    // 3. Strong Hash — replaced weak MD5 (CWE-327) with SHA-256.
+    // SHA-256 is a NIST-approved, collision-resistant hash algorithm suitable
+    // for protecting sensitive data.  MD5 is cryptographically broken and MUST
+    // NOT be used for security-sensitive purposes.
+    public byte[] hash(String input)
             throws Exception {
 
         return MessageDigest
-                .getInstance("MD5")
-                .digest(input.getBytes());
+                .getInstance("SHA-256")
+                .digest(input.getBytes("UTF-8"));
     }
 
     // 4. Information Exposure (Medium)
